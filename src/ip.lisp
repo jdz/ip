@@ -69,7 +69,7 @@
                                       ,(ldb (byte 8 0) ip)))))
 
 (defmethod to-inet-address ((address string))
-  (to-inet-address (ip address)))
+  (to-inet-address (parse-address address)))
 
 (defmethod print-object ((object IPv4-address) stream)
   (flet ((print-it (stream)
@@ -119,7 +119,7 @@
   "IPv4 network constructor."
   (make-instance 'IPv4-network :bits bits :prefix prefix))
 
-(defun IP (string &optional (kind :guess))
+(defun parse-address (string &optional (kind :guess))
   "Parse IP address (currently only IPv4) or network from STRING.
 KIND can be one of: :address, :network or :guess."
   (check-type string string)
@@ -135,7 +135,7 @@ KIND can be one of: :address, :network or :guess."
       ;; XXX: Add a USE-VALUE restart?
       (error 'invalid-ip :string string))
     (let ((bits (logior (ash a 24) (ash b 16) (ash c 8) d)))
-      (return-from IP
+      (return-from parse-address
         (ecase kind
           (:address
            (when prefix
