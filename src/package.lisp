@@ -9,6 +9,7 @@
            #:ipv4-network-prefix
            #:ip
            #:address-in-network-p
+           #:addresses-same-p
            #:count-addresses
            #:map-addresses
            #:enumerate-network

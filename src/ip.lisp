@@ -35,6 +35,9 @@
 (defgeneric address-in-network-p (address network)
   (:documentation "Returns true if ADDRESS belongs to NETWORK."))
 
+(defgeneric addresses-same-p (address1 address2)
+  (:documentation "Returns true if ADDRESS1 is the same as ADDRESS2."))
+
 (defgeneric count-addresses (network)
   (:documentation "Returns the number of addresses in NETWORK."))
 
@@ -160,6 +163,10 @@ KIND can be one of: :address, :network or :guess."
         (prefix (ipv4-network-prefix network)))
     (zerop (logxor network-bits
                    (mask-field (byte prefix (- 32 prefix)) address-bits)))))
+
+(defmethod addresses-same-p ((address1 IPv4-address) (address2 IPv4-address))
+  (= (ipv4-address-bits address1)
+     (ipv4-address-bits address2)))
 
 (defmethod count-addresses ((network IPv4-network))
   (1+ (ldb (byte (- 32 (ipv4-network-prefix network)) 0)
