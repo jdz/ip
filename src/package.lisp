@@ -3,6 +3,7 @@
   (:export #:ip-address
            #:ip-network
            #:ipv4-address
+           #:ipv4-address-from-quad
            #:ipv4-address-bits
            #:ipv4-network
            #:ipv4-network-bits

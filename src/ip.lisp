@@ -89,6 +89,13 @@
   "IPv4 address constructor."
   (make-instance 'ipv4-address :bits bits))
 
+(defun IPv4-address-from-quad (a b c d)
+  "Another IPv4 address constructor.  Callers better make sure that
+the parameters are of type (unsigned-byte 8)."
+  (declare (type (unsigned-byte 8) a b c d))
+  (let ((bits (logior (ash a 24) (ash b 16) (ash c 8) d)))
+    (make-instance 'ipv4-address :bits bits)))
+
 (defclass IPv4-network (ip-network)
   ((bits
     :initarg :bits
