@@ -126,13 +126,22 @@ the parameters are of type (unsigned-byte 8)."
   "IPv4 network constructor."
   (make-instance 'IPv4-network :bits bits :prefix prefix))
 
+(defun valid-ip-p (string &optional (kind :guess))
+  (handler-case
+      (multiple-value-bind (ip kind)
+          (parse-address string kind)
+        (declare (ignore ip))
+        kind)
+    (invalid-ip ()
+      nil)))
+
 (defun parse-address (string &optional (kind :guess))
   "Parse IP address (currently only IPv4) or network from STRING.
 KIND can be one of: :address, :network or :guess."
   (check-type string string)
   (check-type kind (member :address :network :guess))
   (ppcre:register-groups-bind ((#'parse-integer a b c d prefix))
-      ("(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})(?:/(\\d{1,2}))?"
+      ("^(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})(?:/(\\d{1,2}))?$"
        string)
     (unless (and (<= 1 a 255)
                  (<= 0 b 255)
@@ -147,15 +156,19 @@ KIND can be one of: :address, :network or :guess."
           (:address
            (when prefix
              (error 'invalid-ip-address :string string))
-           (IPv4-address bits))
+           (values (IPv4-address bits)
+                   :address))
           (:network
            (unless prefix
              (error 'invalid-ip-network :string string))
-           (IPv4-network (dpb 0 (byte (- 32 prefix) 0) bits) prefix))
+           (values (IPv4-network (dpb 0 (byte (- 32 prefix) 0) bits) prefix)
+                   :network))
           (:guess
            (if prefix
-               (IPv4-network (dpb 0 (byte (- 32 prefix) 0) bits) prefix)
-               (IPv4-address bits)))))))
+               (values (IPv4-network (dpb 0 (byte (- 32 prefix) 0) bits) prefix)
+                       :network)
+               (values (IPv4-address bits)
+                       :address)))))))
   ;; XXX: Should not use register-groups-bind but one of the scan
   ;; functions so that we don't have to repeat this checking.
   (error (ecase kind

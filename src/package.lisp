@@ -8,6 +8,7 @@
            #:ipv4-network
            #:ipv4-network-bits
            #:ipv4-network-prefix
+           #:valid-ip-p
            #:parse-address
            #:address-in-network-p
            #:addresses-same-p
