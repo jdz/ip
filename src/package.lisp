@@ -14,4 +14,9 @@
            #:count-addresses
            #:map-addresses
            #:enumerate-network
-           #:to-inet-address))
+           #:to-inet-address
+
+           ;; Conditions.
+           #:invalid-ip
+           #:invalid-ip-address
+           #:invalid-ip-network))
