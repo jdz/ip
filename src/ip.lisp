@@ -49,6 +49,7 @@
 (defgeneric map-addresses (function network)
   (:documentation "Calls FUNCTION on each address of NETWORK."))
 
+;;; XXX: Rename to to-byte-array?
 (defgeneric to-inet-address (address)
   (:documentation "Convert IP address ADDRESS to vector of
   octets (format used by sb-bsd-sockets)."))
@@ -69,7 +70,7 @@
                                       ,(ldb (byte 8 0) ip)))))
 
 (defmethod to-inet-address ((address string))
-  (to-inet-address (parse-address address)))
+  (to-inet-address (parse-address address :address)))
 
 (defmethod print-object ((object IPv4-address) stream)
   (flet ((print-it (stream)
