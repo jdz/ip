@@ -1,5 +1,12 @@
 (in-package #:ip)
 
+;;; Until we have a real need to use Alexandria.
+(deftype array-index ()
+  `(integer 0 (,(1- array-dimension-limit))))
+
+(deftype array-length ()
+  `(integer 0 ,(1- array-dimension-limit)))
+
 (define-condition invalid-ip (parse-error)
   ((string
     :initarg :string
@@ -70,7 +77,7 @@
                                       ,(ldb (byte 8 0) ip)))))
 
 (defmethod to-inet-address ((address string))
-  (to-inet-address (parse-address address :address)))
+  (to-inet-address (parse-ipv4-address address)))
 
 (defmethod print-object ((object IPv4-address) stream)
   (flet ((print-it (stream)
@@ -127,56 +134,106 @@ the parameters are of type (unsigned-byte 8)."
   "IPv4 network constructor."
   (make-instance 'IPv4-network :bits bits :prefix prefix))
 
-(defun valid-ip-p (string &optional (kind :guess))
-  (handler-case
-      (multiple-value-bind (ip kind)
-          (parse-address string kind)
-        (declare (ignore ip))
-        kind)
-    (invalid-ip ()
-      nil)))
+;;; TODO: Prove that we do not parse more than 4 octets.
+(defun %parse-ipv4-address (string start end junk-allowed)
+  (declare (type string string)
+           (type array-index start)
+           (type array-length end))
+  (labels ((invalid (&rest args)
+             (declare (ignore args))
+             (error 'invalid-ip-address :string (subseq string start end)))
+           (parse-octet (pos bits on-dot on-end)
+             (declare (type fixnum pos))
+             (unless (< pos end)
+               (invalid))
+             (let ((x 0))
+               (declare (type fixnum x))
+               (loop
+                 ;; XXX: Use PARSE-INTEGER so that junk at the end is
+                 ;; reported by the implementation?
+                 (let ((char (aref string pos)))
+                   (case char
+                     ((#\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9)
+                      (setq x (+ (* x 10) (digit-char-p char)))
+                      (unless (<= x #xFFFFFFFF)
+                        (invalid))
+                      (incf pos)
+                      (when (<= end pos)
+                        (return (funcall on-end bits x pos))))
+                     (#\.
+                      (return (funcall on-dot bits x pos)))
+                     (t
+                      (if junk-allowed
+                          (return (funcall on-end bits x pos))
+                          (invalid))))))))
+           (done (bits x pos)
+             (declare (type fixnum x bits pos)
+                      (type (unsigned-byte 32) bits))
+             (let ((result (logior bits x)))
+               (typecase result
+                 ((unsigned-byte 32)
+                  (values result pos))
+                 (t
+                  (invalid)))))
+           (two (bits x pos)
+             (declare (type fixnum x bits pos)
+                      (type (unsigned-byte 32) bits))
+             (assert (zerop bits))
+             (typecase x
+               ((unsigned-byte 8)
+                (parse-octet (1+ pos) (ash x 24) #'three #'done))
+               (t
+                (invalid))))
+           (three (bits x pos)
+             (declare (type fixnum x pos)
+                      (type (unsigned-byte 32) bits))
+             (typecase x
+               ((unsigned-byte 8)
+                (parse-octet (1+ pos) (logior bits (ash x 16)) #'four #'done))
+               (t
+                (invalid))))
+           (four (bits x pos)
+             (declare (type fixnum x bits pos)
+                      (type (unsigned-byte 32) bits))
+             (typecase x
+               ((unsigned-byte 8)
+                (parse-octet (1+ pos) (logior bits (ash x 8)) #'invalid #'done))
+               (t
+                (invalid)))))
+    (parse-octet start 0 #'two #'done)))
 
-(defun parse-address (string &optional (kind :guess))
-  "Parse IP address (currently only IPv4) or network from STRING.
-KIND can be one of: :address, :network or :guess."
-  (check-type string string)
-  (check-type kind (member :address :network :guess))
-  (ppcre:register-groups-bind ((#'parse-integer a b c d prefix))
-      ("^(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})(?:/(\\d{1,2}))?$"
-       string)
-    (unless (and (<= 1 a 255)
-                 (<= 0 b 255)
-                 (<= 0 c 255)
-                 (<= 0 d 255)
-                 (or (null prefix) (<= 1 prefix 32)))
-      ;; XXX: Add a USE-VALUE restart?
-      (error 'invalid-ip :string string))
-    (let ((bits (logior (ash a 24) (ash b 16) (ash c 8) d)))
-      (return-from parse-address
-        (ecase kind
-          (:address
-           (when prefix
-             (error 'invalid-ip-address :string string))
-           (values (IPv4-address bits)
-                   :address))
-          (:network
-           (unless prefix
-             (error 'invalid-ip-network :string string))
-           (values (IPv4-network (dpb 0 (byte (- 32 prefix) 0) bits) prefix)
-                   :network))
-          (:guess
-           (if prefix
-               (values (IPv4-network (dpb 0 (byte (- 32 prefix) 0) bits) prefix)
-                       :network)
-               (values (IPv4-address bits)
-                       :address)))))))
-  ;; XXX: Should not use register-groups-bind but one of the scan
-  ;; functions so that we don't have to repeat this checking.
-  (error (ecase kind
-           (:address 'invalid-ip-address)
-           (:network 'invalid-ip-network)
-           (:guess 'invalid-ip))
-         :string string))
+(defun parse-ipv4-address (string &key (start 0) end junk-allowed)
+  (multiple-value-bind (bits pos)
+      (%parse-ipv4-address string start (or end (length string)) junk-allowed)
+    (values (ipv4-address bits)
+            pos)))
+
+(defun parse-ipv4-network (string &key (start 0) end junk-allowed)
+  (flet ((invalid ()
+           (error 'invalid-ip-network :string (subseq string start end))))
+    (let ((end (or end (length string))))
+      (multiple-value-bind (bits pos)
+          (%parse-ipv4-address string start end t)
+        (unless (and (< (1+ pos) end)
+                     (char= #\/ (char string pos))
+                     (digit-char-p (char string (1+ pos))))
+          (invalid))
+        (let ((prefix-length (parse-integer string :start (1+ pos)
+                                                   :end end
+                                                   :junk-allowed junk-allowed)))
+          (if (<= prefix-length 32)
+              (values (ipv4-network (dpb 0 (byte (- 32 prefix-length) 0) bits)
+                                    prefix-length))
+              (invalid)))))))
+
+(defun valid-ipv4-address-p (string &key (start 0) end junk-allowed)
+  (declare (type string string)
+           (type array-index start)
+           (type (or null array-length) end))
+  (handler-case
+      (%parse-ipv4-address string start (or end (length string)) junk-allowed)
+    (invalid-ip-address ()
+      nil)))
 
 (defmethod address-in-network-p ((address IPv4-address) (network IPv4-network))
   (let ((address-bits (ipv4-address-bits address))
