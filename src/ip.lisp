@@ -134,73 +134,141 @@ the parameters are of type (unsigned-byte 8)."
   "IPv4 network constructor."
   (make-instance 'IPv4-network :bits bits :prefix prefix))
 
-;;; TODO: Prove that we do not parse more than 4 octets.
 (defun %parse-ipv4-address (string start end junk-allowed)
   (declare (type string string)
            (type array-index start)
-           (type array-length end))
-  (labels ((invalid (&rest args)
-             (declare (ignore args))
-             (error 'invalid-ip-address :string (subseq string start end)))
-           (parse-octet (pos bits on-dot on-end)
-             (declare (type fixnum pos))
-             (unless (< pos end)
-               (invalid))
-             (let ((x 0))
-               (declare (type fixnum x))
-               (loop
-                 ;; XXX: Use PARSE-INTEGER so that junk at the end is
-                 ;; reported by the implementation?
-                 (let ((char (aref string pos)))
+           (type array-length end)
+           #-sbcl (optimize (speed 3) (safety 1)))
+  (let ((pos start))
+    (declare (type array-index pos))
+    (labels ((done (value)
+               (return-from %parse-ipv4-address
+                 (values value pos)))
+             (invalid ()
+               (error 'invalid-ip-address :string (subseq string start end)))
+             (parse-digits (limit)
+               (when (<= end pos)
+                 (invalid))
+               (let ((char (aref string pos)))
+                 (case char
+                   (#\0
+                    (incf pos)
+                    (cond ((<= end pos)
+                           (values 0 nil))
+                          (t
+                           (setq char (aref string pos))
+                           (case char
+                             (#\x
+                              (incf pos)
+                              (parse-hex limit))
+                             (#\.
+                              (incf pos)
+                              (values 0 t))
+                             (t
+                              (parse-oct limit char))))))
+                   ((#\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9)
+                    (parse-dec limit char))
+                   (t
+                    (invalid)))))
+             (parse-dec (limit char)
+               (let ((x 0))
+                 (declare (type (integer 0 #.(+ (* #xFFFFFFFF 10) 9)) x))
+                 (loop
                    (case char
                      ((#\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9)
-                      (setq x (+ (* x 10) (digit-char-p char)))
-                      (unless (<= x #xFFFFFFFF)
+                      (setq x (+ (* x 10)
+                                 (- (char-code char) #.(char-code #\0))))
+                      (unless (<= x limit)
                         (invalid))
                       (incf pos)
                       (when (<= end pos)
-                        (return (funcall on-end bits x pos))))
+                        (return (values x nil)))
+                      (setq char (aref string pos)))
                      (#\.
-                      (return (funcall on-dot bits x pos)))
+                      (incf pos)
+                      (return (values x t)))
                      (t
                       (if junk-allowed
-                          (return (funcall on-end bits x pos))
+                          (return (values x nil))
+                          (invalid)))))))
+             (parse-oct (limit char)
+               (let ((x 0))
+                 (declare (type (integer 0 #.(+ (* #xFFFFFFFF 10) 9)) x))
+                 (loop
+                   (case char
+                     ((#\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7)
+                      (setq x (+ (* x 8)
+                                 (- (char-code char) #.(char-code #\0))))
+                      (unless (<= x limit)
+                        (invalid))
+                      (incf pos)
+                      (when (<= end pos)
+                        (return (values x nil)))
+                      (setq char (aref string pos)))
+                     (#\.
+                      (incf pos)
+                      (return (values x t)))
+                     (t
+                      (if junk-allowed
+                          (return (values x nil))
+                          (invalid)))))))
+             (parse-hex (limit)
+               (let ((x 0)
+                     (char (aref string pos)))
+                 (declare (type (integer 0 #.(+ (* #xFFFFFFFF 10) 9)) x)
+                          (type character char))
+                 (loop
+                   (case char
+                     ((#\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9
+                           #\a #\b #\c #\d #\e #\f
+                           #\A #\B #\C #\D #\E #\F)
+                      (setq x (+ (* x 16) (digit-char-p char 16)))
+                      (unless (<= x limit)
+                        (invalid))
+                      (incf pos)
+                      (when (<= end pos)
+                        (return (values x nil)))
+                      (setq char (aref string pos)))
+                     (#\.
+                      (incf pos)
+                      (return (values x t)))
+                     (t
+                      (if junk-allowed
+                          (return (values x nil))
                           (invalid))))))))
-           (done (bits x pos)
-             (declare (type fixnum x bits pos)
-                      (type (unsigned-byte 32) bits))
-             (let ((result (logior bits x)))
-               (typecase result
-                 ((unsigned-byte 32)
-                  (values result pos))
-                 (t
-                  (invalid)))))
-           (two (bits x pos)
-             (declare (type fixnum x bits pos)
-                      (type (unsigned-byte 32) bits))
-             (assert (zerop bits))
-             (typecase x
-               ((unsigned-byte 8)
-                (parse-octet (1+ pos) (ash x 24) #'three #'done))
-               (t
-                (invalid))))
-           (three (bits x pos)
-             (declare (type fixnum x pos)
-                      (type (unsigned-byte 32) bits))
-             (typecase x
-               ((unsigned-byte 8)
-                (parse-octet (1+ pos) (logior bits (ash x 16)) #'four #'done))
-               (t
-                (invalid))))
-           (four (bits x pos)
-             (declare (type fixnum x bits pos)
-                      (type (unsigned-byte 32) bits))
-             (typecase x
-               ((unsigned-byte 8)
-                (parse-octet (1+ pos) (logior bits (ash x 8)) #'invalid #'done))
-               (t
-                (invalid)))))
-    (parse-octet start 0 #'two #'done)))
+      (declare (inline done parse-dec parse-oct parse-hex))
+      (let ((bits 0))
+        (declare (type (unsigned-byte 32) bits))
+        (multiple-value-bind (x more)
+            (parse-digits #xFFFFFFFF)
+          (cond ((not more)
+                 (done x))
+                ((<= x #xFF)
+                 (setq bits (ash x 24)))
+                (t
+                 (invalid))))
+        (multiple-value-bind (x more)
+            (parse-digits #xFFFFFF)
+          (cond ((not more)
+                 (done (logior bits x)))
+                ((<= x #xFF)
+                 (setq bits (logior bits (ash x 16))))
+                (t
+                 (invalid))))
+        (multiple-value-bind (x more)
+            (parse-digits #xFFFF)
+          (cond ((not more)
+                 (done (logior bits x)))
+                ((<= x #xFF)
+                 (setq bits (logior bits (ash x 8))))
+                (t
+                 (invalid))))
+        (multiple-value-bind (x more)
+            (parse-digits #xFF)
+          (cond (more
+                 (invalid))
+                (t
+                 (done (logior bits x)))))))))
 
 (defun parse-ipv4-address (string &key (start 0) end junk-allowed)
   (multiple-value-bind (bits pos)
