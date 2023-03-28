@@ -16,7 +16,7 @@
            #:count-addresses
            #:map-addresses
            #:enumerate-network
-           #:to-inet-address
+           #:to-byte-array
 
            ;; Conditions.
            #:invalid-ip

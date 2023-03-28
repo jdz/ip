@@ -56,10 +56,10 @@
 (defgeneric map-addresses (function network)
   (:documentation "Calls FUNCTION on each address of NETWORK."))
 
-;;; XXX: Rename to to-byte-array?
-(defgeneric to-inet-address (address)
+(defgeneric to-byte-array (address &optional array)
   (:documentation "Convert IP address ADDRESS to vector of
-  octets (format used by sb-bsd-sockets)."))
+  octets (format used by sb-bsd-sockets).  If ARRAY is given, it must be
+  a vector of length at least 4, and the octets will be stored there."))
 
 (defclass IPv4-address (ip-address)
   ((bits
@@ -67,17 +67,19 @@
     :reader IPv4-address-bits
     :type (unsigned-byte 32))))
 
-(defmethod to-inet-address ((address IPv4-address))
-  (with-accessors ((ip ipv4-address-bits))
-      address
-    (make-array 4 :element-type '(unsigned-byte 8)
-                  :initial-contents `(,(ldb (byte 8 24) ip)
-                                      ,(ldb (byte 8 16) ip)
-                                      ,(ldb (byte 8 8) ip)
-                                      ,(ldb (byte 8 0) ip)))))
+(defmethod %to-octets (bits vector)
+  (let ((result (or vector (make-array 4 :element-type '(unsigned-byte 8)))))
+    (setf (aref result 0) (ldb (byte 8 24) bits)
+          (aref result 1) (ldb (byte 8 16) bits)
+          (aref result 2) (ldb (byte 8 8) bits)
+          (aref result 3) (ldb (byte 8 0) bits))
+    result))
 
-(defmethod to-inet-address ((address string))
-  (to-inet-address (parse-ipv4-address address)))
+(defmethod to-byte-array ((address IPv4-address) &optional array)
+  (%to-octets (ipv4-address-bits address) array))
+
+(defmethod to-byte-array ((address string) &optional array)
+  (to-byte-array (parse-ipv4-address address) array))
 
 (defmethod print-object ((object IPv4-address) stream)
   (flet ((print-it (stream)
