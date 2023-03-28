@@ -162,7 +162,6 @@ the parameters are of type (unsigned-byte 8)."
                               (incf pos)
                               (parse-hex limit))
                              (#\.
-                              (incf pos)
                               (values 0 t))
                              (t
                               (parse-oct limit char))))))
@@ -185,7 +184,6 @@ the parameters are of type (unsigned-byte 8)."
                         (return (values x nil)))
                       (setq char (aref string pos)))
                      (#\.
-                      (incf pos)
                       (return (values x t)))
                      (t
                       (if junk-allowed
@@ -206,7 +204,6 @@ the parameters are of type (unsigned-byte 8)."
                         (return (values x nil)))
                       (setq char (aref string pos)))
                      (#\.
-                      (incf pos)
                       (return (values x t)))
                      (t
                       (if junk-allowed
@@ -230,7 +227,6 @@ the parameters are of type (unsigned-byte 8)."
                         (return (values x nil)))
                       (setq char (aref string pos)))
                      (#\.
-                      (incf pos)
                       (return (values x t)))
                      (t
                       (if junk-allowed
@@ -244,6 +240,7 @@ the parameters are of type (unsigned-byte 8)."
           (cond ((not more)
                  (done x))
                 ((<= x #xFF)
+                 (incf pos)
                  (setq bits (ash x 24)))
                 (t
                  (invalid))))
@@ -252,6 +249,7 @@ the parameters are of type (unsigned-byte 8)."
           (cond ((not more)
                  (done (logior bits x)))
                 ((<= x #xFF)
+                 (incf pos)
                  (setq bits (logior bits (ash x 16))))
                 (t
                  (invalid))))
@@ -260,15 +258,17 @@ the parameters are of type (unsigned-byte 8)."
           (cond ((not more)
                  (done (logior bits x)))
                 ((<= x #xFF)
+                 (incf pos)
                  (setq bits (logior bits (ash x 8))))
                 (t
                  (invalid))))
         (multiple-value-bind (x more)
             (parse-digits #xFF)
-          (cond (more
-                 (invalid))
+          (cond ((or (not more)
+                     junk-allowed)
+                 (done (logior bits x)))
                 (t
-                 (done (logior bits x)))))))))
+                 (invalid))))))))
 
 (defun parse-ipv4-address (string &key (start 0) end junk-allowed)
   (multiple-value-bind (bits pos)

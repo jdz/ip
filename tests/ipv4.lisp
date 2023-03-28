@@ -17,7 +17,6 @@
     (test "0.0.0.1"       "0.1")
     (test "0.1.0.1"       "0.1.1")
     (test "127.0.0.1"     "a127.1z" :start 1 :end 6)
-    (test "127.0.0.1"     "127.1/8" :junk-allowed t)
 
     ;; HEX
     (test "192.0.2.235"   "0xC00002EB")
@@ -49,6 +48,15 @@
     (test "127.1.0.1"     "0177.0200001")
     (test "127.1.0.1"     "0177.000200001")))
 
+(defun trailing-junk ()
+  (flet ((test (expected-output expected-end input &rest args)
+           (multiple-value-bind (result end)
+               (apply #'ip:parse-ipv4-address input :junk-allowed t args)
+             (assert (string= expected-output (princ-to-string result)))
+             (assert (= expected-end end)))))
+    (test "127.0.0.1" 5 "127.1/8")
+    (test "7.8.9.10"  8 "7.8.9.10.in-addr.arpa")))
+
 (defun invalid-addresses ()
   (flet ((test (input &rest args)
            (handler-case
@@ -70,4 +78,5 @@
 (defun run-tests ()
   (parse-ipv4-address)
   (invalid-addresses)
+  (trailing-junk)
   t)
