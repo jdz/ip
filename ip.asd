@@ -8,3 +8,10 @@
   :components ((:file "package")
                (:file "ip" :depends-on ("package")))
   :in-order-to ((test-op (test-op "ip/tests"))))
+
+(defsystem "ip/tests"
+  :depends-on ("ip")
+  :pathname "tests/"
+  :components ((:file "ipv4"))
+  :perform (test-op (operation component)
+                    (symbol-call '#:ip.tests.ipv4 '#:run-tests)))
