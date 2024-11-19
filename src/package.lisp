@@ -14,6 +14,7 @@
            #:address-in-network-p
            #:addresses-same-p
            #:count-addresses
+           #:network-range
            #:map-addresses
            #:enumerate-network
            #:to-byte-array

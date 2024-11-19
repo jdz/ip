@@ -48,6 +48,9 @@
 (defgeneric count-addresses (network)
   (:documentation "Returns the number of addresses in NETWORK."))
 
+(defgeneric network-range (network)
+  (:documentation "Returns NETWORK start and end addresses as values."))
+
 (defgeneric enumerate-network (network)
   (:documentation "Returns a function that returns all addresses in
   NETWORK (sequentially), or NIL if invoked after all address have
@@ -319,6 +322,13 @@ the parameters are of type (unsigned-byte 8)."
 (defmethod count-addresses ((network IPv4-network))
   (1+ (ldb (byte (- 32 (ipv4-network-prefix network)) 0)
            #xFFFFFFFF)))
+
+(defmethod network-range ((network IPv4-network))
+  (let ((bits (ipv4-network-bits network))
+        (prefix (ipv4-network-prefix network)))
+    (values (IPv4-address bits)
+            (IPv4-address (+ bits (ldb (byte (- 32 prefix) 0)
+                                       #xFFFFFFFF))))))
 
 (defmethod map-addresses (function (network IPv4-network))
   (loop with enumerator = (enumerate-network network)
